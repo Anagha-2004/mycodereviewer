@@ -15,8 +15,8 @@ def generate_review_comment(diff_text: str):
         model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
         
         # 1. Prepare Input
-        input_prompt = f"Review the following code change for potential bugs or improvements: {diff_text}"
-        
+        # Force the AI to look for the error with a direct instruction
+        input_prompt = f"Critique this code change. Specifically check if all defined variables are used and if the function returns the intended value. Code diff: {diff_text}"
         input_ids = tokenizer.encode(input_prompt, 
                                      return_tensors="pt", 
                                      max_length=512, 
