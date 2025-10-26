@@ -1,3 +1,17 @@
+jobs:
+  ai_code_review:
+    runs-on: ubuntu-latest
+    
+    # 💥 ADD THIS PERMISSIONS BLOCK 💥
+    permissions:
+      contents: read     # Already needed for checkout
+      pull-requests: write # Allows writing comments and statuses to PRs
+      issues: write      # Allows writing comments to issues (PRs are issues)
+    # ---------------------------------
+    
+    steps:
+      - name: Checkout Code
+# ... (rest of the file remains the same)
 name: Automated Code Review
 
 on:
