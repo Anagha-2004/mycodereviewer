@@ -1,9 +1,11 @@
 # demo_app2.py
 def calculate_sum_up_to_n(n):
-    # Bug: The range(n) goes from 0 to n-1, missing 'n' itself.
+    """
+    Calculates the sum of all integers from 0 up to and including n.
+    Example: calculate_sum_up_to_5 should return 15 (0+1+2+3+4+5).
+    """
     total = 0
-    for i in range(n):  # Should be range(n + 1)
+    # BUG: The range(n) stops at n-1, skipping 'n' itself.
+    for i in range(n):  
         total += i
-    return tot
-
-# Example: calculate_sum_up_to_5 should be 15, but this code calculates 10.
+    return total
