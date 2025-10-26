@@ -4,6 +4,6 @@ def calculate_sum_up_to_n(n):
     total = 0
     for i in range(n):  # Should be range(n + 1)
         total += i
-    return total
+    return tot
 
 # Example: calculate_sum_up_to_5 should be 15, but this code calculates 10.
