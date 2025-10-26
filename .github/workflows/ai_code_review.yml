@@ -1,17 +1,3 @@
-jobs:
-  ai_code_review:
-    runs-on: ubuntu-latest
-    
-    # 💥 ADD THIS PERMISSIONS BLOCK 💥
-    permissions:
-      contents: read     # Already needed for checkout
-      pull-requests: write # Allows writing comments and statuses to PRs
-      issues: write      # Allows writing comments to issues (PRs are issues)
-    # ---------------------------------
-    
-    steps:
-      - name: Checkout Code
-# ... (rest of the file remains the same)
 name: Automated Code Review
 
 on:
@@ -23,10 +9,15 @@ jobs:
   ai_code_review:
     runs-on: ubuntu-latest
     
+    # 💥 CORRECTED INDENTATION FOR THE PERMISSIONS BLOCK 💥
+    permissions:
+      contents: read     # Required for Checkout
+      pull-requests: write # Required to post status/checks
+      issues: write      # Required to post comments to the PR (which is an issue)
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-        # Note: fetch-depth: 0 is required to get the full diff history
         with:
           fetch-depth: 0 
 
@@ -35,26 +26,22 @@ jobs:
         with:
           python-version: '3.10'
       
-      # --- Performance Improvement: Cache Dependencies ---
       - name: Cache Python Dependencies
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          # Key is based on OS and a hash of requirements.txt
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
-        # Install from requirements.txt to utilize caching
         run: pip install -r requirements.txt
         
       - name: Fetch PR Diff
         id: fetch_diff
         run: |
-          # Fetch the diff between the base branch (e.g., main) and the PR branch
           DIFF_CONTENT=$(git diff ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
-          # Set the environment variable for the next step, handling multi-line content
+          # Use 'EOF' delimiter for multi-line content
           echo "DIFF_CONTENT<<EOF" >> $GITHUB_ENV
           echo "$DIFF_CONTENT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -62,11 +49,9 @@ jobs:
       - name: Run AI Reviewer Script
         id: run_reviewer
         run: |
-          # Pass the multi-line diff content to the Python script
-          # The output is captured using a unique delimiter (EOF)
           REVIEW_COMMENT=$(python review_code.py "$DIFF_CONTENT")
           
-          # ⚠️ CRITICAL FIX: Use 'EOF' delimiter for multi-line output ⚠️
+          # Output the comment using the 'EOF' delimiter
           echo "REVIEW_COMMENT<<EOF" >> $GITHUB_OUTPUT
           echo "$REVIEW_COMMENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -77,7 +62,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const reviewComment = `${{ steps.run_reviewer.outputs.REVIEW_COMMENT }}`;
-            // If the script successfully returned a review, post it as a comment.
+            
+            // Post the comment if it's not an internal error message
             if (reviewComment && !reviewComment.startsWith("ERROR:")) {
                 github.rest.issues.createComment({
                     issue_number: context.issue.number,
@@ -86,7 +72,7 @@ jobs:
                     body: reviewComment
                 });
             } else {
-                // Post the error message if the review failed (e.g., model crashed)
+                // Post a clear message if the review failed
                  github.rest.issues.createComment({
                     issue_number: context.issue.number,
                     owner: context.repo.owner,
