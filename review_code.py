@@ -1,21 +1,20 @@
-# review_code.py
 import sys
+import os
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 # --- Configuration ---
-# Use a model specialized in code tasks (e.g., CodeReviewer, CodeT5)
 MODEL_NAME = "microsoft/codereviewer" 
-MAX_LENGTH = 150 # Max length for the generated comment
+MAX_LENGTH = 150 
 
 def generate_review_comment(diff_text: str):
     """Loads a transformer model and generates a review comment."""
     try:
-        # Load the model and tokenizer (This happens only once per job run)
+        # Load the model and tokenizer (from cache if available)
         tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
         model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
         
-        # 1. Prepare Input
-        input_prompt = f"Review the following code change for potential bugs or improvements: {diff_text}"
+        # 1. Prepare Input - Strong, directive prompt for better bug detection
+        input_prompt = f"Critique this code change. Specifically check for logical errors, security risks (like division by zero), and ensure variables are used correctly. Code diff: {diff_text}"
         
         input_ids = tokenizer.encode(input_prompt, 
                                      return_tensors="pt", 
@@ -40,18 +39,29 @@ def generate_review_comment(diff_text: str):
         return comment
 
     except Exception as e:
-        # Return a clean error message, which will be the review comment
-        return f"ERROR: Could not generate review. Exception: {e}"
+        # Return a clean error message if the model fails
+        return f"ERROR: Could not generate review due to model failure. Exception: {e}"
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        # In the CI environment, sys.argv[1] should be the diff content
+        # This error is usually caught by the GitHub Action workflow
         print("ERROR: Missing diff content argument.")
         sys.exit(1)
 
     diff_content = sys.argv[1]
-    
     review = generate_review_comment(diff_content)
     
-    # ⚠️ CRITICAL: Print ONLY the review comment to standard output
-    print(review)
+    # ⚠️ FINAL LOGIC: Check for critical keywords to set the header ⚠️
+    critical_keywords = ["bug", "error", "risk", "security", "fail", "incorrect", "issue", "vulnerability", "zero"]
+    
+    # Check if the generated review contains any critical keywords (case-insensitive)
+    is_critical = any(keyword in review.lower() for keyword in critical_keywords)
+    
+    # Format the final output with a strong header based on content
+    if is_critical:
+        final_output = "🚨 **CRITICAL AI REVIEW ALERT:** 🚨\n\n" + review
+    else:
+        final_output = "✅ **AI Code Reviewer Suggestion (No Major Issues Found):**\n\n" + review
+        
+    # Print ONLY the final classified output to standard output
+    print(final_output)

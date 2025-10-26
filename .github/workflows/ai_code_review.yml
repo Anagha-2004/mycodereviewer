@@ -1,60 +1,83 @@
-# .github/workflows/ai_code_review.yml
 name: Automated Code Review
 
 on:
+  # Triggers the workflow on every pull request event
   pull_request:
-    types: [opened, synchronize] 
+    types: [opened, synchronize, reopened]
 
 jobs:
   ai_code_review:
     runs-on: ubuntu-latest
     
+    # 💥 CORRECTED INDENTATION FOR THE PERMISSIONS BLOCK 💥
     permissions:
-      pull-requests: write 
-      contents: read 
-      
+      contents: read     # Required for Checkout
+      pull-requests: write # Required to post status/checks
+      issues: write      # Required to post comments to the PR (which is an issue)
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       
+      - name: Cache Python Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install dependencies
-        run: pip install transformers torch
+        run: pip install -r requirements.txt
         
-      # --- Fetch the Code Diff ---
-      - name: Fetch PR Diff Content
+      - name: Fetch PR Diff
+        id: fetch_diff
         run: |
-          DIFF=$(curl -s "${{ github.event.pull_request.diff_url }}" | head -c 10000)
-          # Store the diff content in an environment variable
-          echo "DIFF_CONTENT=$DIFF" >> $GITHUB_ENV
-          
-      # --- Run the AI Reviewer Script (FIXED) ---
+          DIFF_CONTENT=$(git diff ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
+          # Use 'EOF' delimiter for multi-line content
+          echo "DIFF_CONTENT<<EOF" >> $GITHUB_ENV
+          echo "$DIFF_CONTENT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       - name: Run AI Reviewer Script
-        id: review_run
-        shell: bash # Ensure bash is used for reliable shell operations
+        id: run_reviewer
         run: |
-          # 1. Execute the Python script and capture its full output (multi-line)
           REVIEW_COMMENT=$(python review_code.py "$DIFF_CONTENT")
           
-          # 2. Use the EOF delimiter to pass the multi-line variable to GITHUB_OUTPUT
-          # This fixes the "Unable to process file command 'output' successfully" error
-          echo "review_comment<<EOF" >> $GITHUB_OUTPUT
+          # Output the comment using the 'EOF' delimiter
+          echo "REVIEW_COMMENT<<EOF" >> $GITHUB_OUTPUT
           echo "$REVIEW_COMMENT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
-      # --- Post the Comment to the PR ---
+
       - name: Post AI Review to PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v6
         with:
-          # This now uses the correctly captured multi-line output variable
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🤖 **AI Code Reviewer Suggestion:**\n\n' + '${{ steps.review_run.outputs.review_comment }}'
-            })
+            const reviewComment = `${{ steps.run_reviewer.outputs.REVIEW_COMMENT }}`;
+            
+            // Post the comment if it's not an internal error message
+            if (reviewComment && !reviewComment.startsWith("ERROR:")) {
+                github.rest.issues.createComment({
+                    issue_number: context.issue.number,
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    body: reviewComment
+                });
+            } else {
+                // Post a clear message if the review failed
+                 github.rest.issues.createComment({
+                    issue_number: context.issue.number,
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    body: "❌ **Automated Review Failed:** The AI model encountered an error. Check job logs for details."
+                });
+                core.setFailed("AI Reviewer Script failed or returned an error message.");
+            }
